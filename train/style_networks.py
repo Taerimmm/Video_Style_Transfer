@@ -542,7 +542,10 @@ class TransformerNet(nn.Module):
     ## Inference main function
     ## ---------------------------------------------
 
-    def
+    def validation(self, cur_frame, style):
+        F_cur = self.Encoder(cur_frame)
+        F_style = self.EncoderStyle(style)
+        return self.Decoder(F_cur, F_style)
 
     ## ---------------------------------------------
     ## Training main function
