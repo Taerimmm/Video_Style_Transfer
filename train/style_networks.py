@@ -523,7 +523,7 @@ class TransformerNet(nn.Module):
     ## Debug tool for saving results
     ## ---------------------------------------------
 
-    def
+    # def
 
     ## ---------------------------------------------
     ## Functions for the proposed Relaxed Style Loss

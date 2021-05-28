@@ -75,8 +75,13 @@ So I didn't include the LSGAN loss in the paper.
 If you are interested, try adding --adaversarial_loss
 '''
 
-parser.add_argument()
-
+parser.add_argument('--contentWeight', type=float, default=1, help='content loss weight')
+parser.add_argument('--styleWeight', type=float, default=20, help='style loss weight')
+parser.add_argument('--reconWeight', type=float, default=20, help='reconstruction loss weight')
+parser.add_argument('--tvWeight', type=float, default=10, help='tv loss weight')
+parser.add_argument('--temporalWeight', type=float, default=60, help='temporal loss weight')
+parser.add_argument('--ganWeight', type=float, default=1, help='LSGAN loss weight')
+parser.add_argument('--oldWeight', type=float, default=10, help='the classical style loss weight')
 
 # Specific settings for Compound Regularization (proposed model : --data_sigma --data_w)
 parser.add_argument('--data_sigma', action='store_true', help='use noise in temporal loss')
@@ -234,6 +239,7 @@ TimeName = time.asctime(time.localtime(time.time())) + " RandomID %d"%(random.ra
 
 # ==== Loss functions ====
 
+# total variance
 def TV(x):
     b, c, h_x, w_x = x.shape
     h_tv = torch.mean(torch.abs(x[:,:,1:,:] - x[:,:,:h_x-1,:]))
@@ -279,22 +285,175 @@ print('Training Start.')
 min_total_loss = np.inf
 cur_total_loss = 0.
 
+for epoch in range(opt.load_epoch+1, opt.epoches+1):
+
+    for iteration, sequence in enumerate(loader):
+
+        FirstFrame = sequence['Content'].to(device)
+        Style = sequence['Style'].to(device)
+
+        loss_D = 0
+
+        ############################
+        ## (1) Update D network
+        ############################
+
+        if opt.adaversarial_loss:
+
+            # 1. Change state of networks
+
+            for param in netD.parameters():
+                param.requires_grad = False
+            style_net.ParamActive()
+
+            optimizer.zero_grad()
+
+            # 2. Output of netG
+
+            with torch.no_grad():
+                StyledFirstFrame = style_net.validation(FirstFrame, Style)
+
+            # 3. Train net D
+
+            # Fake data
+            pred_fake = netD(StyledFirstFrame.detach())
+            loss_D_fake = criterionGAN(pred_fake, False)
+
+            # Real data
+            pred_real = netD(Style)
+            loss_D_real = criterionGAN(pred_real, True)
+
+            # Combine loss and calculate gradients
+            loss_D = (loss_D_fake + loss_D_real) * 0.5
+
+            loss_D.backward()
+            optimizerD.step()
+
+        ############################
+        ## (2) Update G network
+        ############################
+
+        # 1. Change state of networks
+
+        if opt.adaversarial_loss:
+            for param in netD.parameters():
+                param.requires_grad = False
+            style_net.ParamActive()
+
+        optimizer.zero_grad()
+
+        # 2. Train netG
+
+        StyledFirstFrame, RelaxedStyledFirstFrame, ReconFirstFrame, ReconFirstStyle, \
+            content_loss, new_style_loss, recon_loss, old_style_loss = style_net(FirstFrame, Style)
+
+        # Losses
+
+        Loss = 0.
+
+        if opt.temporal_loss:
+            SecondFrame, ForwardFlow = TemporalLoss.GenerateFakeData(FirstFrame)
+            StyledSecondFrame = style_net.validation(SecondFrame, Style)
+
+            temporal_loss, FakeStyledSecondFrame_1 = TemporalLoss(StyledFirstFrame, StyledSecondFrame, ForwardFlow)
+
+            temporal_loss_GT, _ = TemporalLoss(FirstFrame, SecondFrame, ForwardFlow)
+
+            Loss = Loss + temporal_loss * opt.temporalWeight
+        else:
+            temporal_loss = 0.
+            temporal_loss_GT = 0.
+
+        if opt.recon_loss:
+            Loss = Loss + recon_loss * opt.reconWeight
+
+        if opt.style_content_loss:
+            Loss = Loss + content_loss * opt.contentWeight + new_style_loss * opt.styleWeight
+
+        if opt.tv_loss:
+            tv_loss = TV(StyledFirstFrame)
+            Loss = Loss + tv_loss * opt.tvWeight
+        else:
+            tv_loss = 0
+
+        # Not use
+        if opt.old_style_loss:
+            Loss = Loss + old_style_loss * opt.oldWeight
+
+        if opt.adaversarial_loss:
+            pred_fake = netD(StyledFirstFrame)
+            loss_G_GAN = criterionGAN(pred_fake, True)
+            Loss = Loss + loss_G_GAN * opt.ganWeight
+        else:
+            loss_G_GAN = 0.
+
+        # Update
+
+        Loss.backward()
+        optimizer.step()
+
+        ############################
+        ## (3) Logs and savings
+        ############################
+
+        cur_total_loss += Loss.item()
+
+        if iteration % 10 == 0:
+
+            print("[Epoch %d/%d][Iter %d/%d] New Style : %.3f, Content : %.3f, Old Style : %.3f, Recon : %.3f, TV : %.3f, Temporal : %.3f (%.3f), GAN : %.3f" \
+                    % (epoch, opt.epoches, iteration, iteration_sum, new_style_loss, \
+                                                                     content_loss, \
+                                                                     old_style_loss, \
+                                                                     recon_loss, \
+                                                                     tv_loss, \
+                                                                     temporal_loss, \
+                                                                     temporal_loss_GT, \
+                                                                     loss_G_GAN))
+
+            writer.add_scalars('scalar/loss', {'temporal':temporal_loss, \
+                                               'content':content_loss, \
+                                               'new_style':new_style_loss, \
+                                               'old_style':old_style_loss, \
+                                               'recon':recon_loss, \
+                                               'tv':tv_loss, \
+                                               'temporal GT':temporal_loss_GT, \
+                                               'loss_G_GAN':loss_G_GAN, \
+                                               'loss_d':loss_D}, iteration)
+
+        if iteration % opt.log == 0:
+            cur_total_loss /= opt.log
+
+            if cur_total_loss < min_total_loss:
+                min_total_loss = cur_total_loss
+                torch.save(optimizer.state_dict(), '%s/optimizer-epoch-%d.pth' % (opt.outf, epoch))
+                torch.save(style_net.state_dict(), '%s/style_net-latest-epoch-%d(%.2e)(W_%d_%d)(Sigma_%.2e)-%s.pth' %
+                    (opt.outf, 1, opt.temporalWeight, opt.data_w * opt.data_motion_level, opt.data_w * opt.data_shift_level, opt.data_sigma * opt.data_noise_level, TimeName))
+
+                if opt.adaversarial_loss:
+                    torch.save(netD.state_dict(), '%s/netD-epoch-%d.pth' % (opt.outf, epoch))
+            cur_total_loss = 0
 
 
+            save_figure(FirstFrame, '%d_FirstFrame' % (epoch))
+            save_figure(Style, '%d_Style' % (epoch))
+            save_figure(StyledFirstFrame, '%d_StyledFirstFrame' % (epoch))
 
+            if opt.style_content_loss and opt.relax_style:
+                save_figure(RelaxedStyledFirstFrame, '%d_RelaxedStyledFirstFrame' % (epoch))
+                save_figure(torch.abs(RelaxedStyledFirstFrame - StyledFirstFrame), '%d_RelaxedResidual' % (epoch), False)
 
+            if opt.recon_loss:
+                save_figure(ReconFirstFrame, '%d_ReconFirstFrame' % (epoch))
+                save_figure(ReconFirstStyle, '%d_ReconFirstStyle' % (epoch))
 
+            if opt.temporal_loss:
+                save_figure(SecondFrame, '%d_SecondFrame' % (epoch))
+                save_figure(StyledSecondFrame, '%d_StyledSecondFrame' % (epoch))
+                save_figure(FakeStyledSecondFrame_1, '%d_FakeStyledSecondFrame_1' % (epoch))
 
+            Validation.SaveResults(epoch)
 
-
-
-
-
-
-
-
-
-
+writer.close()
 
 
 

@@ -87,6 +87,28 @@ class TemporalLoss(nn.Module):
         Input should be a (H,W,3) numpy of value range [0,1].
         '''
 
+        if self.data_w:
+            forward_flow = self.GenerateFakeFlow(first_frame.shape[2], first_frame.shape[3])
+            if first_frame.is_cuda:
+                forward_flow = forward_flow.cuda()
+            forward_flow = forward_flow.expand(first_frame.shape[0], 2, first_frame[2], first_frame[3])
+            second_frame = warp(first_frame, forward_flow)
+        else:
+            second_frame = first_frame.clone()
+            forward_flow = None
+
+        if self.data_sigma:
+            second_frame = self.GaussianNoise(second_frame, stddev=self.noise_level)
+
+        return second_frame, forward_flow
+
+    def forward(self, first_frame, second_frame, forward_flow):
+        if self.data_w:
+            first_frame = warp(first_frame, forward_flow)
+
+        temporalloss = torch.mean(torch.abs(first_frame - second_frame))
+
+        return temporalloss, first_frame
 
 
 
