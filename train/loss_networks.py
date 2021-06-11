@@ -91,7 +91,7 @@ class TemporalLoss(nn.Module):
             forward_flow = self.GenerateFakeFlow(first_frame.shape[2], first_frame.shape[3])
             if first_frame.is_cuda:
                 forward_flow = forward_flow.cuda()
-            forward_flow = forward_flow.expand(first_frame.shape[0], 2, first_frame[2], first_frame[3])
+            forward_flow = forward_flow.expand(first_frame.shape[0], 2, first_frame.shape[2], first_frame.shape[3])
             second_frame = warp(first_frame, forward_flow)
         else:
             second_frame = first_frame.clone()
