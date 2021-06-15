@@ -137,8 +137,33 @@ if use_Global:
     input_frame = read_img(frame_list[-1])
     framework.add(input_frame)
 
+    print('Computing global features')
+    framework.compute()
+
+    print('Preparations finish!')
 
 
+# Main stylization
+
+for i in range(frame_num):
+
+    print("Stylizing frame %d" %(i))
+
+    # Read the image
+    input_frame = read_img(frame_list[i])
+
+    # Crop the image
+    H, W, C = input_frame.shape
+    new_input_frame = reshape.process(input_frame)
+
+    # Stylization
+    styled_input_frame = framework.transfer(new_input_frame)
+
+    # Crop the image back
+    styled_input_frame = styled_input_frame[64:64+H, 64:64+W, :]
+
+    # Save result
+    cv2.imwrite('{}/{}/{}'.format(result_frames_path, name, frame_list[i].split('/')[-1]), styled_input_frame)
 
 
 
