@@ -166,5 +166,17 @@ for i in range(frame_num):
     cv2.imwrite('{}/{}/{}'.format(result_frames_path, name, frame_list[i].split('/')[-1]), styled_input_frame)
 
 
+# Write images back to video
 
+if save_video:
+    frame_list = glob.glob("{}/{}/*.*".format(result_frames_path, name))
+    frame_list.sort()
 
+    demo = cv2.imread(frame_list[0])
+
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    videoWriter = cv2.VideoWriter('{}/{}.avi'.format(result_videos_path, name), fourcc, fps, (demo.shape[1], demo.shape[0]))
+
+    for frame in frame_list:
+        videoWriter.write(cv2.imread(frame))
+    videoWriter.release()
