@@ -34,7 +34,7 @@ use_Global = True
 
 # Saving settings
 save_video = True
-fps = 24
+fps = 23.98
 
 # Where to save the results
 result_frames_path = './result_frames/'
@@ -170,11 +170,11 @@ for i in range(frame_num):
 
 if save_video:
     frame_list = glob.glob("{}/{}/*.*".format(result_frames_path, name))
-    frame_list.sort()
+    frame_list.sort(key=lambda name:int(''.join(filter(str.isdigit, name))))
 
     demo = cv2.imread(frame_list[0])
 
-    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG') # Also (*'DVIX') or (*'X264')
     videoWriter = cv2.VideoWriter('{}/{}.avi'.format(result_videos_path, name), fourcc, fps, (demo.shape[1], demo.shape[0]))
 
     for frame in frame_list:
