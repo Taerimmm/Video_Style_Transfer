@@ -133,6 +133,12 @@ if use_Global:
         input_frame = read_img(frame_list[i])
         framework.add(input_frame)
 
+        if s % 3 == 2:
+            print('Compute')
+            framework.compute()
+            print('Clean F_patches')
+            framework.clean_()
+
     print('Add frame %d , %d frames in total' %(sample_sum + 1, sample_sum + 1))
     input_frame = read_img(frame_list[-1])
     framework.add(input_frame)
