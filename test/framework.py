@@ -92,6 +92,9 @@ class Stylization():
         self.model.clean()
         torch.cuda.empty_cache()
 
+    def clean_(self):
+        self.model.clean_()
+
     # ====== Style Transfer ======
 
     def prepare_style(self, style):
