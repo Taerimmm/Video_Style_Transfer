@@ -473,6 +473,9 @@ class TransformerNet(nn.Module):
         self.F_patches = []
         self.Decoder.clean()
 
+    def clean_(self):
+        self.F_patches = []
+
     def RGB2Gray(self, image):
         mean = image.new_tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
         std = image.new_tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
